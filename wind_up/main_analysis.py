@@ -44,6 +44,10 @@ if TYPE_CHECKING:
 logger = logging.getLogger(__name__)
 
 
+# =====================================================================================================================
+# ------
+# =====================================================================================================================
+
 def _add_fake_power_data(
     ref_df: pd.DataFrame,
     *,
@@ -53,6 +57,11 @@ def _add_fake_power_data(
 ) -> pd.DataFrame:
     ref_df[ref_pw_col] = np.interp(ref_df[ref_ws_col], scada_pc[DataColumns.wind_speed_mean], scada_pc["pw_clipped"])
     return ref_df
+
+
+# =====================================================================================================================
+# ------
+# =====================================================================================================================
 
 
 def _get_ref_lat_long(ref_name: str, cfg: WindUpConfig) -> tuple[float, float]:
@@ -73,6 +82,10 @@ def _get_ref_lat_long(ref_name: str, cfg: WindUpConfig) -> tuple[float, float]:
             raise ValueError(msg) from exc
     return ref_lat, ref_long
 
+
+# =====================================================================================================================
+# ------
+# =====================================================================================================================
 
 def _filter_ref_df_for_wake_free(
     ref_df: pd.DataFrame,
@@ -139,6 +152,10 @@ def _filter_ref_df_for_wake_free(
     return ref_df.drop(columns=["rounded_wd"])
 
 
+# =====================================================================================================================
+# ------
+# =====================================================================================================================
+
 def _filter_ref_df_for_wd_and_hod(ref_df: pd.DataFrame, ref_wd_col: str, cfg: WindUpConfig) -> pd.DataFrame:
     ref_df = ref_df.copy()
     if cfg.ref_wd_filter is not None:
@@ -166,6 +183,10 @@ def _filter_ref_df_for_wd_and_hod(ref_df: pd.DataFrame, ref_wd_col: str, cfg: Wi
         )
     return ref_df
 
+
+# =====================================================================================================================
+# ------
+# =====================================================================================================================
 
 def _get_ref_df(
     *,
@@ -226,6 +247,10 @@ def _get_ref_df(
     return ref_df
 
 
+# =====================================================================================================================
+# ------
+# =====================================================================================================================
+
 def _make_extended_time_index(
     original_index: pd.DatetimeIndex,
     *,
@@ -244,6 +269,10 @@ def _make_extended_time_index(
         timedelta_multiple += 1
     return extended_index.sort_values().drop_duplicates()
 
+
+# =====================================================================================================================
+# ------
+# =====================================================================================================================
 
 def _toggle_pairing_filter(
     *,
@@ -303,6 +332,10 @@ def _toggle_pairing_filter(
     return filt_pre_df, filt_post_df
 
 
+# =====================================================================================================================
+# ------
+# =====================================================================================================================
+
 def _yaw_error_results(pre_df: pd.DataFrame, post_df: pd.DataFrame, required_pp_cols: list[str]) -> dict:
     results = {}
     if "test_yaw_error_mean" in pre_df.columns:
@@ -313,6 +346,10 @@ def _yaw_error_results(pre_df: pd.DataFrame, post_df: pd.DataFrame, required_pp_
         results["ref_yaw_error_post"] = post_df.dropna(subset=required_pp_cols)["ref_yaw_error_mean"].mean()
     return results
 
+
+# =====================================================================================================================
+# ------
+# =====================================================================================================================
 
 def _yaw_offset_results(
     pre_df: pd.DataFrame, post_df: pd.DataFrame, required_pp_cols: list[str], ref_wd_col: str, test_wd_col: str
@@ -356,6 +393,10 @@ def _yaw_offset_results(
             result_manager.warning(f"{result_name} > 0 for: ({results[result_name]})")
     return results
 
+
+# =====================================================================================================================
+# ------
+# =====================================================================================================================
 
 def _check_for_ops_curve_shift(
     pre_df: pd.DataFrame,
@@ -428,6 +469,10 @@ def _check_for_ops_curve_shift(
 
     return results_dict
 
+
+# =====================================================================================================================
+# ------
+# =====================================================================================================================
 
 def _calc_test_ref_results(
     *,
@@ -740,6 +785,10 @@ def _calc_test_ref_results(
     return other_results | pp_results
 
 
+# =====================================================================================================================
+# ------
+# =====================================================================================================================
+
 def _results_per_test_ref_to_df(results_per_test_ref: list[pd.DataFrame]) -> pd.DataFrame:
     results_per_test_ref_df = pd.concat(results_per_test_ref)
     first_columns = [
@@ -768,6 +817,10 @@ def _results_per_test_ref_to_df(results_per_test_ref: list[pd.DataFrame]) -> pd.
         [col for col in first_columns + other_columns if col in results_per_test_ref_df.columns]
     ]
 
+
+# =====================================================================================================================
+# MAIN (and only externally called function)
+# =====================================================================================================================
 
 def run_wind_up_analysis(
     inputs: AssessmentInputs,

@@ -75,6 +75,10 @@ def _plot_data_coverage(
     ax.plot(column_data.index, column_data, color=color, linewidth=1, **_label)  # type: ignore[arg-type]
 
 
+# =====================================================================================================================
+# Plotting, called by "run_wind_up_analysis" (the MAIN function for running p2p)
+# =====================================================================================================================
+
 def plot_input_data_timeline(
     assessment_inputs: AssessmentInputs,
     *,

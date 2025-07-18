@@ -32,6 +32,10 @@
 
 from __future__ import annotations
 
+# =====================================================================================================================
+# load pip-installed packages
+# =====================================================================================================================
+
 import logging
 import math
 import sys
@@ -44,9 +48,13 @@ import pandas as pd
 from matplotlib import pyplot as plt
 from pydantic import BaseModel, Field
 
+# =====================================================================================================================
+# load RES libraries
+# =====================================================================================================================
+
 from examples.helpers import format_and_print_results_table
 from wind_up.constants import OUTPUT_DIR, PROJECTROOT_DIR, TIMESTAMP_COL, DataColumns
-from wind_up.interface import AssessmentInputs
+from wind_up.interface import AssessmentInputs # special variable because it's a dataclass
 from wind_up.main_analysis import run_wind_up_analysis
 from wind_up.models import Asset, PlotConfig, PrePost, Turbine, WindUpConfig
 from wind_up.reanalysis_data import ReanalysisDataset
@@ -59,6 +67,10 @@ if TYPE_CHECKING:
     import datetime as dt
     from pathlib import Path
 
+# =====================================================================================================================
+# Add directories
+# =====================================================================================================================
+
 CACHE_DIR = PROJECTROOT_DIR / "cache" / "wedowind_example"
 ASSESSMENT_NAME = "wedowind_example"
 ANALYSIS_OUTPUT_DIR = OUTPUT_DIR / ASSESSMENT_NAME
@@ -66,6 +78,9 @@ ZIP_FILENAME = "Turbine_Upgrade_Dataset.zip"
 
 logger = logging.getLogger(__name__)
 
+# =====================================================================================================================
+# We Do Wind Specific classes
+# =====================================================================================================================
 
 class WeDoWindScadaColumns(Enum):
     Y_CTRL_NORM = "y_ctrl(normalized)"
@@ -84,7 +99,7 @@ class KeyDates(NamedTuple):
     analysis_first_dt_utc_start: dt.datetime
     upgrade_first_dt_utc_start: dt.datetime
     analysis_last_dt_utc_start: dt.datetime
-    lt_first_dt_utc_start: dt.datetime
+    lt_first_dt_utc_start: dt.datetime #### lt = long term
     lt_last_dt_utc_start: dt.datetime
     detrend_first_dt_utc_start: dt.datetime
     detrend_last_dt_utc_start: dt.datetime
@@ -92,6 +107,12 @@ class KeyDates(NamedTuple):
     pre_last_dt_utc_start: dt.datetime
     post_first_dt_utc_start: dt.datetime
     post_last_dt_utc_start: dt.datetime
+
+
+# =====================================================================================================================
+# Data unpacking
+# this includes reading zip file, construct test and ref turbine dataframes, and panda concatenating
+# =====================================================================================================================
 
 
 class WeDoWindScadaUnpacker:
@@ -154,6 +175,10 @@ class WeDoWindScadaUnpacker:
         )
 
 
+# =====================================================================================================================
+# Setting up pydantic basemodel class "model" (aka onbject) specific to WeDoWind
+# =====================================================================================================================
+
 class WeDoWindAnalysisConf(BaseModel):
     scada_file_name: str = Field(description="e.g. 'Turbine Upgrade Dataset(Pitch Angle Pair).csv'")
     unusable_wd_ranges: list[tuple[int, int]] = Field(description="directions to exclude from entire analysis")
@@ -165,6 +190,9 @@ class WeDoWindAnalysisConf(BaseModel):
         description="use rated power bins which have been extrapolated in uplift calculation", default=False
     )
 
+# =====================================================================================================================
+# if unavailable, download data
+# =====================================================================================================================
 
 def download_wedowind_data_from_zenodo(cache_dir: Path = CACHE_DIR) -> None:
     logger.info("Downloading example data from Zenodo")
@@ -172,6 +200,10 @@ def download_wedowind_data_from_zenodo(cache_dir: Path = CACHE_DIR) -> None:
         # https://zenodo.org/records/5516556
         download_zenodo_data(record_id="5516556", output_dir=cache_dir, filenames={ZIP_FILENAME})
 
+# =====================================================================================================================
+# the "we do wind" coordinates... These are faked because the dataset does
+# not come with any coordinate information, relative or otherwise
+# =====================================================================================================================
 
 def create_fake_wedowind_metadata_df() -> pd.DataFrame:
     # coordinates below are based on Figure 5.6 of Data Science for Wind Energy (Yu Ding 2020)
@@ -192,7 +224,10 @@ def create_fake_wedowind_metadata_df() -> pd.DataFrame:
     return coords_df.loc[:, ["Name", "Latitude", "Longitude"]].assign(
         TimeZone="UTC", TimeSpanMinutes=10, TimeFormat="Start"
     )
-
+# =====================================================================================================================
+# Unclear the exact purpose...
+# Looks like a fake dataframe where for each time there is a mean wind speed and a mean wind direction
+# =====================================================================================================================
 
 def create_fake_wedowind_reanalysis_dataset(start_datetime: dt.datetime) -> ReanalysisDataset:
     rng = np.random.default_rng(0)
@@ -208,6 +243,9 @@ def create_fake_wedowind_reanalysis_dataset(start_datetime: dt.datetime) -> Rean
         ),
     )
 
+# =====================================================================================================================
+# key dates... clearer explanation in comments below
+# =====================================================================================================================
 
 def establish_wedowind_key_dates(scada_df: pd.DataFrame) -> KeyDates:
     """Extracts important dates from the SCADA data. These dates may then be used in the WindUpConfig.
@@ -220,7 +258,7 @@ def establish_wedowind_key_dates(scada_df: pd.DataFrame) -> KeyDates:
     """
     upgrade_first_dt_utc_start = scada_df[scada_df[WeDoWindScadaColumns.UPGRADE_STATUS.value] > 0].index.min()
     analysis_last_dt_utc_start = scada_df[scada_df[WeDoWindScadaColumns.UPGRADE_STATUS.value] > 0].index.max()
-    lt_first_dt_utc_start = max(scada_df.index.min(), upgrade_first_dt_utc_start - pd.DateOffset(years=1))
+    lt_first_dt_utc_start = max(scada_df.index.min(), upgrade_first_dt_utc_start - pd.DateOffset(years=1)) #### whichever came later, the earliest date or one year before upgrade
     lt_last_dt_utc_start = lt_first_dt_utc_start + pd.DateOffset(years=1) - pd.Timedelta(minutes=10)
     detrend_first_dt_utc_start = lt_first_dt_utc_start
     detrend_last_dt_utc_start = (
@@ -242,19 +280,22 @@ def establish_wedowind_key_dates(scada_df: pd.DataFrame) -> KeyDates:
     analysis_first_dt_utc_start = min(pre_first_dt_utc_start, lt_first_dt_utc_start, detrend_first_dt_utc_start)
 
     return KeyDates(
-        analysis_first_dt_utc_start=analysis_first_dt_utc_start,
-        upgrade_first_dt_utc_start=upgrade_first_dt_utc_start,
-        analysis_last_dt_utc_start=analysis_last_dt_utc_start,
-        lt_first_dt_utc_start=lt_first_dt_utc_start,
-        lt_last_dt_utc_start=lt_last_dt_utc_start,
-        detrend_first_dt_utc_start=detrend_first_dt_utc_start,
-        detrend_last_dt_utc_start=detrend_last_dt_utc_start,
-        pre_first_dt_utc_start=pre_first_dt_utc_start,
-        pre_last_dt_utc_start=pre_last_dt_utc_start,
-        post_first_dt_utc_start=post_first_dt_utc_start,
-        post_last_dt_utc_start=post_last_dt_utc_start,
+        analysis_first_dt_utc_start=analysis_first_dt_utc_start,####   analysis_first =    min(pre_first, lt_first, detrend_first)             = 2010-07-30 22:40
+        upgrade_first_dt_utc_start=upgrade_first_dt_utc_start,####     upgrade_first =     min (upgrade > 0)                                   = 2011-04-25 21:50
+        analysis_last_dt_utc_start=analysis_last_dt_utc_start,####     analysis_last =     max (upgrade > 0)                                   = 2011-06-25 18:30
+        lt_first_dt_utc_start=lt_first_dt_utc_start,####               lt_first =          max ( min(timestamp) or upgrade_first - 1 year)     = 2010-07-30 22:40 i.e. min(timestamp) because we don't have data for april 2010
+        lt_last_dt_utc_start=lt_last_dt_utc_start,####                 lt_last =           lt_first + 1 year - 10 min                          = 2011-07-30 22:30  NOTE this goes beyond what we have data for...
+        detrend_first_dt_utc_start=detrend_first_dt_utc_start,####     detrend_first =     lt_first                                            = 2010-07-30 22:40
+        detrend_last_dt_utc_start=detrend_last_dt_utc_start,####       detrend_last =      upgrade_first - 1 week - 10 minutes                 = 2011-04-18 21:40
+        pre_first_dt_utc_start=pre_first_dt_utc_start,####             pre_first =         lt_first                                            = 2010-07-30 22:40
+        pre_last_dt_utc_start=pre_last_dt_utc_start,####               pre_last =          pre_first + (analysis_last-upgrade_first) - 10 min  = 2010-09-29 19:10
+        post_first_dt_utc_start=post_first_dt_utc_start,####           post_first =        upgrade_first                                       = 2011-04-25 21:50
+        post_last_dt_utc_start=post_last_dt_utc_start,####             post_last =         analysis_last                                       = 2011-06-25 18:30
     )
 
+# =====================================================================================================================
+# plot all temporal plots, than also some scatter and mean Cp plots
+# =====================================================================================================================
 
 def generate_custom_exploratory_plots(
     scada_df: pd.DataFrame, assumed_rated_power_kw: float, rotor_diameter_m: int, out_dir: Path
@@ -294,7 +335,7 @@ def generate_custom_exploratory_plots(
     for name, df in region2_df.groupby(DataColumns.turbine_name):
         if name == "Mast":
             continue
-        plt.figure()
+        plt.figure()#### ===================== PLOT SCATTERS
         plt.scatter(
             df[WeDoWindScadaColumns.WIND_DIRECTION.value],
             calc_cp(
@@ -325,7 +366,7 @@ def generate_custom_exploratory_plots(
             [WeDoWindScadaColumns.WIND_DIRECTION.value, "normalized_power", "V"]
         ].mean()
         binned_by_turbine[name] = binned
-        plt.figure()
+        plt.figure()#### ===================== PLOT MEANS
         plt.plot(
             binned[WeDoWindScadaColumns.WIND_DIRECTION.value],
             calc_cp(
@@ -359,7 +400,7 @@ def generate_custom_exploratory_plots(
             label=name,
             marker=".",
         )
-    plt.ylim(0.2, 0.7)
+    plt.ylim(0.2, 2.5)
     title = f"mean Cp vs {WeDoWindScadaColumns.WIND_DIRECTION.value}"
     plt.title(title)
     plt.xlabel(WeDoWindScadaColumns.WIND_DIRECTION.value)
@@ -373,6 +414,9 @@ def generate_custom_exploratory_plots(
     logger.info("Custom plots saved to directory: %s", custom_plots_dir_root)
     return custom_plots_dir_root
 
+# =====================================================================================================================
+# configurations...
+# =====================================================================================================================
 
 ANALYSIS_SPECIFIC_CONFIG = {
     "Pitch Angle": WeDoWindAnalysisConf(
@@ -390,6 +434,9 @@ ANALYSIS_SPECIFIC_CONFIG = {
     ),
 }
 
+# =====================================================================================================================
+# MAIN analysis, tailored for WeDoWind
+# =====================================================================================================================
 
 def main_wedowind_analysis(
     analysis_name: str,
@@ -401,14 +448,24 @@ def main_wedowind_analysis(
     bootstrap_runs_override: int | None = None,
 ) -> pd.DataFrame:
     cache_assessment = cache_dir / analysis_name
+
+    #### checks if the folders exist
+
     for d in [cache_dir, analysis_output_dir, cache_assessment]:
         d.mkdir(parents=True, exist_ok=True)
+
+    #### check that the input "analysis_name" (the only compulsory input for main_wedowind_analysis) matches what's been specified in "ANALYSIS_SPECIFIC_CONFIG"
 
     if analysis_name not in ANALYSIS_SPECIFIC_CONFIG:
         msg = f"analysis_name must be one of {list(ANALYSIS_SPECIFIC_CONFIG.keys())}"
         raise ValueError(msg)
 
+    #### extract from "ANALYSIS_SPECIFIC_CONFIG" dictionary the bit that we want ("analysis_name")
+
     analysis_conf = ANALYSIS_SPECIFIC_CONFIG[analysis_name]
+
+
+    #### download it (if available)
 
     download_wedowind_data_from_zenodo(cache_dir=cache_dir)
 
@@ -418,12 +475,19 @@ def main_wedowind_analysis(
     cutout_ws_mps = 20
 
     logger.info("Unpacking turbine SCADA data")
+
+    #### unpack data
+
     scada_df = WeDoWindScadaUnpacker(
         scada_file_name=str(analysis_conf.scada_file_name),
         wedowind_zip_file_path=cache_dir / ZIP_FILENAME,
     ).unpack(rated_power_kw=assumed_rated_power_kw)
 
+    #### create fake coordinates metadata
+
     metadata_df = create_fake_wedowind_metadata_df()
+
+    #### create the timeseries and Cp plots
 
     if generate_custom_plots:
         generate_custom_exploratory_plots(
@@ -464,17 +528,18 @@ def main_wedowind_analysis(
 
     # Reanalysis data is required by WindUp but we do now know where this wind farm is
     # therefore create a fake reanalysis object
+
     reanalysis_dataset = create_fake_wedowind_reanalysis_dataset(start_datetime=key_dates.lt_first_dt_utc_start)
 
     cfg = WindUpConfig(
-        assessment_name=analysis_name,
-        ref_wd_filter=analysis_conf.ref_wd_filter,
-        use_lt_distribution=True,
-        out_dir=analysis_output_dir / analysis_name,
-        test_wtgs=[Turbine.model_validate(wtg_map[x]) for x in [WeDoWindTurbineNames.TEST.value]],
-        ref_wtgs=[Turbine.model_validate(wtg_map[x]) for x in [WeDoWindTurbineNames.REF.value]],
-        years_offset_for_pre_period=1,
-        years_for_lt_distribution=1,
+        assessment_name=analysis_name,####                                                             for example "Pitch Angle"
+        ref_wd_filter=analysis_conf.ref_wd_filter,####                                                 wake free sector determined by inspecting detrending plots
+        use_lt_distribution=True,####                                                                  ?
+        out_dir=analysis_output_dir / analysis_name,####                                               output file path
+        test_wtgs=[Turbine.model_validate(wtg_map[x]) for x in [WeDoWindTurbineNames.TEST.value]],#### Create "Turbine" class object "Test"
+        ref_wtgs=[Turbine.model_validate(wtg_map[x]) for x in [WeDoWindTurbineNames.REF.value]],####   Create "Turbine" class object "Ref"
+        years_offset_for_pre_period=1,####                                                             OK this is strange and I don't like it. It's decided to do one year offset for pre period. but there isn't the data?
+        years_for_lt_distribution=1,####                                                               lt = long term
         years_for_detrend=1,
         ws_bin_width=1.0,
         use_test_wtg_lt_distribution=True,
@@ -501,9 +566,14 @@ def main_wedowind_analysis(
         bootstrap_runs_override=bootstrap_runs_override,
     )
 
-    plot_cfg = PlotConfig(show_plots=False, save_plots=save_plots, plots_dir=cfg.out_dir / "plots")
+    #### show plots changed to True from False
+
+    plot_cfg = PlotConfig(show_plots=True, save_plots=save_plots, plots_dir=cfg.out_dir / "plots")
 
     wd_ranges_to_exclude = analysis_conf.unusable_wd_ranges
+
+    #### mask (i.e. remove???) excluded yaw angles
+
     scada_df_for_assessment = scada_df.copy()
     for wdr in wd_ranges_to_exclude:
         logger.info("Filtering out wind directions between %s", wdr)
@@ -517,16 +587,23 @@ def main_wedowind_analysis(
         plot_cfg=plot_cfg,
         scada_df=scada_df_for_assessment,
         metadata_df=metadata_df,
-        reanalysis_datasets=[reanalysis_dataset],
+        reanalysis_datasets=[reanalysis_dataset],#### remember, this one is fake. unclear what it is anyway...
         cache_dir=cache_assessment,
     )
 
-    # Run Analysis
+    #### Run Analysis
+
     results_per_test_ref_df = run_wind_up_analysis(assessment_inputs)
+
+    #### Save? Analysis
+
     results_per_test_ref_df.to_csv(cfg.out_dir / "results_per_test_ref.csv", index=False)
     _ = format_and_print_results_table(results_per_test_ref_df)
     return results_per_test_ref_df
 
+# =====================================================================================================================
+# standard Python run statement
+# =====================================================================================================================
 
 if __name__ == "__main__":
     setup_logger(ANALYSIS_OUTPUT_DIR / "analysis.log")
